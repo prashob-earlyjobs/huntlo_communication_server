@@ -1,4 +1,11 @@
 node_modules
 dist
+dist-ssr
 .env
+.env.*
+!.env.example
 *.log
+dump.rdb
+*.local
+.DS_Store
+.idea

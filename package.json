@@ -1,36 +1,12 @@
 {
   "name": "humtlo-communication-gateway",
-  "version": "1.0.0",
-  "description": "Communication gateway API",
-  "main": "dist/server.js",
+  "private": true,
+  "description": "Humtlo communication gateway — React frontend and Node server",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "outlook:token": "tsx scripts/get-outlook-token.ts"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "@google/genai": "^2.20.0",
-    "bullmq": "^6.3.3",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "ioredis": "^6.0.0",
-    "joi": "^18.2.5",
-    "mongoose": "^9.9.4",
-    "nodemailer": "^9.1.0",
-    "uuid": "^14.0.2"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.4.0",
-    "@types/nodemailer": "^8.0.1",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:server": "npm run dev --prefix server",
+    "build:frontend": "npm run build --prefix frontend",
+    "build:server": "npm run build --prefix server",
+    "start:server": "npm run start --prefix server"
   }
 }
