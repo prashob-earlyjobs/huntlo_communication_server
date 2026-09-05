@@ -636,11 +636,10 @@ function mergeHunarQuestions(existing: any[] = [], evaluated: any[] = []) {
 }
 
 async function evaluateCallQuestions(
-  Model: typeof HunarCommunication | typeof ZyvkaCommunication,
   filter: Record<string, string>,
   body: Record<string, any>
 ) {
-  const log = await Model.findOne(filter).lean();
+  const log = await HunarCommunication.findOne(filter).lean();
   if (!log?.questions?.length) return;
 
   const formattedPrompt = hunarQuestionPrompt
@@ -649,7 +648,7 @@ async function evaluateCallQuestions(
 
   const evaluated = parseGeminiJson(await generateGeminiContent(formattedPrompt));
 
-  await Model.updateOne(filter, {
+  await HunarCommunication.updateOne(filter, {
     $set: {
       overallAIStatus: evaluated?.overallAIStatus,
       overallAIDescription: evaluated?.overallAIDescription,
@@ -705,7 +704,7 @@ async function saveHunarCallWebhook(
     await HunarCommunication.updateOne(filter, { $set }, { upsert: false });
 
     if (field === "call_result") {
-      await evaluateCallQuestions(HunarCommunication, filter, body);
+      await evaluateCallQuestions(filter, body);
     }
   } catch (error) {
     console.error(error);
