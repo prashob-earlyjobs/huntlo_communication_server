@@ -17,7 +17,15 @@ const messageSchema = new mongoose.Schema(
     },
     vendor: {
       type: String,
-      enum: Object.values(MessageVendor),
+      enum: [
+        MessageVendor.GMAIL,
+        MessageVendor.OUTLOOK,
+        MessageVendor.HUNTLO,
+        MessageVendor.SMTP,
+        MessageVendor.META,
+        MessageVendor.HUNAR,
+        MessageVendor.ZYVKAY,
+      ],
       required: true,
     },
     receiver: { type: String, required: true },
@@ -39,6 +47,10 @@ const messageSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+if (mongoose.models.Message) {
+  mongoose.deleteModel("Message");
+}
 
 export const Message = mongoose.model(
   "Message",

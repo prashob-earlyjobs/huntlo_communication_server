@@ -9,6 +9,7 @@ import { enqueueMessage } from "../queue/message.queue";
 import { getGmailAccessToken } from "../helpers/gmailToken";
 import { WhatsappConversation } from "../models/whatsappConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
+import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
 
 
 const statusPrompt = `You are an AI assistant that screens candidates over email.
@@ -46,7 +47,7 @@ Set exactly one overallAIStatus, in this order:
 Do not set awaiting_reply. That is set before any candidate reply.
 Do not set in_screening, shortlisted, or rejected. Those happen after AI voice screening.
 
-Set overallAIDescription to a short internal reason for the status. Do not put this text in the email.
+Set overallAIDescription to a internal reason for the status. Do not put this text in the email.
 
 ## How to write emailBody
 
@@ -95,6 +96,76 @@ For each question:
 - description: a short internal reason for this question's status. Do not put this text in the email.
 Do not use Candidate Details as an answer.
 Allowed overallAIStatus values: interested, not_interested, in_qualification, not_qualified, qualified.`;
+
+
+
+
+const hunarQuestionPrompt = `You are an AI assistant that screens candidates over a call.
+
+ knockout/screening questions will be asked by the assistant, 
+
+
+## Original questions rule
+Each item includes id, question, required, and pass_condition. Evaluate against pass_condition.
+{{questions}}
+
+## provided answers
+Hunar call_result JSON is below. Keys like q_1_answer map to question id q-1.
+{{answers}}
+
+## How to evaluate
+
+1. Extract all knockout questions from the original questions. Do not skip any item.
+3. Map the provided answers and questions along with the result
+5. Do not infer answers from unrelated text.
+6. Evaluate each question independently:
+   - unanswered: candidate has not clearly answered it in the thread
+   - passed: candidate answered it and the pass_condition is met
+   - failed: candidate answered it and the pass_condition is not met
+7. Detect opt-out / not interested from inbound text (they decline the role, ask to stop, or say they are not interested).
+
+## Status rules
+
+Set exactly one overallAIStatus, in this order:
+
+1. not_qualified — any required knockout is failed.
+2. qualified — every required knockout is passed. Calendly has been or should be sent. Do not ask more questions.
+
+Set overallAIDescription to a internal reason for the status. Do not put this text in the email.
+
+If overallAIStatus is interested:
+- Briefly acknowledge and start screening by asking ALL required questions in this same email. In that case prefer in_qualification instead of interested.
+
+If overallAIStatus is qualified:
+- This is the final scheduling message.
+- Include the exact Calendly URL from the original prompt. Do not modify, shorten, replace, or encode it differently.
+- Do not ask any more screening questions.
+
+## Output
+
+Return ONLY valid JSON. No markdown. No extra text.
+
+{
+  "overallAIStatus": "in_qualification",
+  "overallAIDescription": "",
+  "questions": [
+    {
+      "id": "question_id_from_original_prompt",
+      "question": "The exact screening question asked or to be asked",
+      "answer": null,
+      "status": "unanswered",
+      "description": ""
+    }
+  ]
+}
+
+questions must include every knockout extracted from the original prompt.
+For each question:
+- answer: the candidate's inbound answer text, or null if they have not answered it yet
+- status: unanswered | passed | failed
+- description: a short internal reason for this question's status. Do not put this text in the email.
+Do not use Candidate Details as an answer.
+Allowed overallAIStatus values: interested, not_interested, in_qualification, not_qualified, qualified.`
 
 const TERMINAL_AI_STATUSES = [
   OverallAIStatus.NOT_INTERESTED,
@@ -511,46 +582,115 @@ export const metaWebhookController = async (req: Request, res: Response) => {
 
 
 
-export const hunerCallStatusController = async (req: Request, res: Response) => {
-  await saveHunarCallWebhook(req, res, "call_status");
+export const hunerCallStatusController = (req: Request, res: Response) => {
+  ackHunarCallWebhook(req, res, "call_status");
 };
 
-export const hunerCallRecordingController = async (req: Request, res: Response) => {
-  await saveHunarCallWebhook(req, res, "call_recording");
+export const hunerCallRecordingController = (req: Request, res: Response) => {
+  ackHunarCallWebhook(req, res, "call_recording");
 };
 
-export const hunerCallResultController = async (req: Request, res: Response) => {
-  await saveHunarCallWebhook(req, res, "call_result");
+export const hunerCallResultController = (req: Request, res: Response) => {
+  ackHunarCallWebhook(req, res, "call_result");
 };
 
-export const hunerCallSummaryController = async (req: Request, res: Response) => {
-  await saveHunarCallWebhook(req, res, "call_summary");
+export const hunerCallSummaryController = (req: Request, res: Response) => {
+  ackHunarCallWebhook(req, res, "call_summary");
 };
 
-async function saveHunarCallWebhook(
+function ackHunarCallWebhook(
   req: Request,
   res: Response,
   field: "call_status" | "call_recording" | "call_result" | "call_summary"
 ) {
+  const body = req.body || {};
+  const campaignId = String(req.query.campignId || req.query.campaign_id || "");
+  res.status(200).end();
+  void saveHunarCallWebhook(body, campaignId, field);
+}
+
+function hunarCallAnswers(body: Record<string, any>) {
+  return body?.result || body?.results || body;
+}
+
+function mergeHunarQuestions(existing: any[] = [], evaluated: any[] = []) {
+  const byId = new Map(
+    existing.map((item) => [String(item?.id || ""), item])
+  );
+
+  const merged = (evaluated.length ? evaluated : existing).map((item) => {
+    const current = byId.get(String(item?.id || "")) || {};
+    return {
+      id: item?.id || current.id,
+      question: item?.question || current.question,
+      required: current.required === true,
+      pass_condition: current.pass_condition || "",
+      asked: item?.answer != null && item?.answer !== "",
+      answer: item?.answer ?? current.answer ?? null,
+      status: item?.status || current.status || "unanswered",
+      description: item?.description || current.description || "",
+    };
+  });
+
+  return merged;
+}
+
+async function evaluateCallQuestions(
+  Model: typeof HunarCommunication | typeof ZyvkaCommunication,
+  filter: Record<string, string>,
+  body: Record<string, any>
+) {
+  const log = await Model.findOne(filter).lean();
+  if (!log?.questions?.length) return;
+
+  const formattedPrompt = hunarQuestionPrompt
+    .replace("{{questions}}", JSON.stringify(log.questions, null, 2))
+    .replace("{{answers}}", JSON.stringify(hunarCallAnswers(body), null, 2));
+
+  const evaluated = parseGeminiJson(await generateGeminiContent(formattedPrompt));
+
+  await Model.updateOne(filter, {
+    $set: {
+      overallAIStatus: evaluated?.overallAIStatus,
+      overallAIDescription: evaluated?.overallAIDescription,
+      questions: mergeHunarQuestions(log.questions, evaluated?.questions),
+    },
+  });
+}
+
+function hunarWebhookFilter(
+  body: Record<string, any>,
+  campaignId: string
+): Record<string, string> | null {
+  const agentId = body.agent_id;
+  const mobileNumber = body.to_number || body.mobile_number;
+  const callId = body.call_id;
+
+  if (callId) {
+    return { callId };
+  }
+
+  if (agentId && campaignId && mobileNumber) {
+    return { agentId, campaignId, mobileNumber };
+  }
+
+  return null;
+}
+
+async function saveHunarCallWebhook(
+  body: Record<string, any>,
+  campaignId: string,
+  field: "call_status" | "call_recording" | "call_result" | "call_summary"
+) {
   try {
-    const body = req.body || {};
-    const campaignId = String(req.query.campignId || req.query.campaign_id || "");
     const agentId = body.agent_id;
     const mobileNumber = body.to_number || body.mobile_number;
     const callId = body.call_id;
-
-    if (!agentId || !campaignId) {
-      return res.status(200).end();
-    }
-
-    const filter = mobileNumber
-      ? { agentId, campaignId, mobileNumber }
-      : callId
-        ? { agentId, campaignId, callId }
-        : null;
+    const filter = hunarWebhookFilter(body, campaignId);
 
     if (!filter) {
-      return res.status(200).end();
+      console.error("Hunar webhook skipped: missing call_id or campaign/phone");
+      return;
     }
 
     const $set: Record<string, unknown> = {
@@ -558,16 +698,208 @@ async function saveHunarCallWebhook(
     };
 
     if (callId) $set.callId = callId;
+    if (agentId) $set.agentId = agentId;
     if (mobileNumber) $set.mobileNumber = mobileNumber;
+    if (campaignId) $set.campaignId = campaignId;
 
     await HunarCommunication.updateOne(filter, { $set }, { upsert: false });
 
-    return res.status(200).end();
+    if (field === "call_result") {
+      await evaluateCallQuestions(HunarCommunication, filter, body);
+    }
   } catch (error) {
     console.error(error);
-    return res.status(200).end();
   }
 }
+
+async function evaluateZyvkaCallQuestions(
+  filter: Record<string, string>,
+  body: Record<string, any>,
+  fallback: { campaignId: string; mobileNumber: string }
+) {
+  const log =
+    (await ZyvkaCommunication.findOne(filter).lean()) ||
+    (fallback.campaignId && fallback.mobileNumber
+      ? await ZyvkaCommunication.findOne({
+          campaignId: fallback.campaignId,
+          mobileNumber: fallback.mobileNumber,
+        }).lean()
+      : null);
+
+  const questions = Array.isArray(log?.questions) ? log.questions : [];
+  const outreachPrompt = String(log?.prompt || "");
+
+  const formattedPrompt =
+    hunarQuestionPrompt
+      .replace("{{questions}}", JSON.stringify(questions, null, 2))
+      .replace("{{answers}}", JSON.stringify(hunarCallAnswers(body), null, 2)) +
+    (outreachPrompt
+      ? `\n\n## Original agent prompt\n${outreachPrompt}\nIf questions JSON is empty, extract knockout questions from this prompt.`
+      : "");
+
+  try {
+    const evaluated = parseGeminiJson(
+      await generateGeminiContent(formattedPrompt)
+    );
+    const writeFilter = log?._id ? { _id: log._id } : filter;
+    await ZyvkaCommunication.updateOne(writeFilter, {
+      $set: {
+        overallAIStatus: evaluated?.overallAIStatus,
+        overallAIDescription: evaluated?.overallAIDescription,
+        questions: mergeHunarQuestions(questions, evaluated?.questions),
+      },
+    });
+  } catch (error) {
+    console.error("Zyvka Gemini evaluation failed:", (error as Error).message);
+  }
+}
+
+function mapZyvkaOverallAiStatus(
+  event: string,
+  variables: Record<string, any>,
+  summary: string
+) {
+  if (event.includes("failed")) return "not_interested";
+
+  const interest = String(
+    variables.interest_level ||
+      variables.final_outcome ||
+      variables.candidate_interest_score ||
+      ""
+  ).toLowerCase();
+
+  if (
+    interest.includes("not_interested") ||
+    interest.includes("not interested")
+  ) {
+    return "not_interested";
+  }
+  if (
+    interest.includes("not_qualified") ||
+    interest.includes("not qualified")
+  ) {
+    return "not_qualified";
+  }
+  if (interest.includes("qualified")) return "qualified";
+  if (interest.includes("interest")) return "interested";
+  if (summary) return "in_qualification";
+  return "interested";
+}
+
+export const zyvkayWebhookController = (req: Request, res: Response) => {
+  const body = req.body || {};
+  res.status(200).end();
+  console.log(body)
+  void saveZyvkayWebhook(body);
+};
+
+async function saveZyvkayWebhook(body: Record<string, any>) {
+  try {
+    const data =
+      body.data && typeof body.data === "object" && !Array.isArray(body.data)
+        ? body.data
+        : body;
+    const candidate = data.candidate || body.candidate || {};
+    const metadata = data.metadata || body.metadata || {};
+    const variables =
+      data.variables ||
+      data.analysisVariables ||
+      body.variables ||
+      {};
+    const callId = String(
+      data.callId || data.call_id || body.callId || body.call_id || ""
+    );
+    const mobileNumber = String(
+      candidate.phoneNumber ||
+        data.phoneNumber ||
+        data.to_number ||
+        body.phoneNumber ||
+        ""
+    );
+    const campaignId = String(
+      metadata.campaignId || metadata.campaign_id || ""
+    );
+    const event = String(body.event || data.event || "").toLowerCase();
+    const status = String(data.status || body.status || "");
+    const summary = String(data.summary || body.summary || "");
+    const transcript = String(
+      data.transcript || data.call_transcript || body.transcript || ""
+    );
+    const recordingUrl = String(
+      data.recordingUrl || data.recording_url || body.recordingUrl || ""
+    );
+
+    const canUpsert = Boolean(campaignId && mobileNumber);
+    const filter = canUpsert
+      ? { campaignId, mobileNumber }
+      : callId
+        ? { callId }
+        : null;
+
+    if (!filter) {
+      console.error("Zyvka webhook skipped: missing call_id or campaign/phone");
+      return;
+    }
+
+    const $set: Record<string, unknown> = {
+      call_status: {
+        call_id: callId,
+        to_number: mobileNumber,
+        status,
+        event_type: event,
+      },
+    };
+
+    if (callId) $set.callId = callId;
+    if (mobileNumber) $set.mobileNumber = mobileNumber;
+    if (campaignId) $set.campaignId = campaignId;
+
+    if (recordingUrl) {
+      $set.call_recording = {
+        call_id: callId,
+        recording_url: recordingUrl,
+      };
+    }
+
+    const isTerminal =
+      event.includes("completed") ||
+      event.includes("failed") ||
+      Boolean(summary) ||
+      Object.keys(variables).length > 0;
+
+    if (isTerminal) {
+      const resultBody = {
+        call_id: callId,
+        result: {
+          summary,
+          transcript,
+          ...variables,
+        },
+      };
+      $set.call_result = resultBody;
+      $set.call_summary = { call_id: callId, summary };
+      $set.overallAIStatus = mapZyvkaOverallAiStatus(event, variables, summary);
+      $set.overallAIDescription =
+        summary || String(variables.summary || variables.final_outcome || "");
+      await ZyvkaCommunication.updateOne(
+        filter,
+        { $set },
+        { upsert: canUpsert }
+      );
+      await evaluateZyvkaCallQuestions(filter, resultBody, {
+        campaignId,
+        mobileNumber,
+      });
+      return;
+    }
+
+    await ZyvkaCommunication.updateOne(filter, { $set }, { upsert: canUpsert });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+
 
 
 

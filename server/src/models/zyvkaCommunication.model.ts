@@ -1,11 +1,13 @@
 import { Schema, model } from "mongoose";
 
-const hunarCommunicationSchema = new Schema(
+const zyvkaCommunicationSchema = new Schema(
   {
-    agentId: { type: String, required: true },
     campaignId: { type: String, required: true },
     mobileNumber: { type: String, required: true },
+    calleeName: String,
     callId: String,
+    prompt: String,
+    metadata: Schema.Types.Mixed,
     call_status: Schema.Types.Mixed,
     call_recording: Schema.Types.Mixed,
     call_result: Schema.Types.Mixed,
@@ -48,13 +50,15 @@ const hunarCommunicationSchema = new Schema(
   { timestamps: true }
 );
 
-hunarCommunicationSchema.index(
-  { agentId: 1, campaignId: 1, mobileNumber: 1 },
+zyvkaCommunicationSchema.index(
+  { campaignId: 1, mobileNumber: 1 },
   { unique: true }
 );
 
-export const HunarCommunication = model(
-  "HunarCommunication",
-  hunarCommunicationSchema,
-  "hcg_hunar_communications"
+zyvkaCommunicationSchema.index({ callId: 1 }, { sparse: true });
+
+export const ZyvkaCommunication = model(
+  "ZyvkaCommunication",
+  zyvkaCommunicationSchema,
+  "hcg_zyvkay_communications"
 );

@@ -282,9 +282,10 @@ const sections: Section[] = [
   {
     id: 'call',
     label: 'Call',
-    intro: 'type is call. vendor must be hunar. Do not send to, body, html, or smtp.',
+    intro: 'type is call. vendor is hunar or zyvkay. Do not send to, body, html, or smtp.',
     rules: [
-      'agent_id and campaign_id are required.',
+      'hunar requires agent_id and campaign_id.',
+      'zyvkay requires prompt and campaign_id. agent_id is not used.',
       'data must include at least one callee with callee_name and mobile_number.',
       'custom_data values must be strings.',
       'to is forbidden for calls.',
@@ -346,6 +347,24 @@ const sections: Section[] = [
               callee_name: 'Rohit Sharma',
               mobile_number: '918765432109',
               custom_data: { role: 'Frontend Engineer' },
+            },
+          ],
+        }),
+      },
+      {
+        id: 'call-zyvkay',
+        title: 'Call — Zyvka / Zyastra',
+        note: 'No agent_id. prompt is the voice agent script. Callbacks go to /api/v1/webhooks/zyvkay.',
+        curl: prettyCurl('', {
+          type: 'call',
+          vendor: 'zyvkay',
+          campaign_id: 'camp_456',
+          prompt:
+            'You are Roshni, a friendly AI recruiter. Screen the candidate and collect notice period, CTC, and interest.',
+          data: [
+            {
+              callee_name: 'Gokul Kumar',
+              mobile_number: '+14155550123',
             },
           ],
         }),
@@ -462,6 +481,12 @@ export default function Docs() {
                 <td>call</td>
                 <td>hunar</td>
                 <td>agent_id, campaign_id, data[]</td>
+                <td>to, body, html, smtp, template</td>
+              </tr>
+              <tr>
+                <td>call</td>
+                <td>zyvkay</td>
+                <td>prompt, campaign_id, data[]</td>
                 <td>to, body, html, smtp, template</td>
               </tr>
             </tbody>

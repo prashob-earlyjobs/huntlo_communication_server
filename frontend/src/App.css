@@ -274,6 +274,11 @@
   color: #7c3aed;
 }
 
+.status-log-zyvkay {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
 .queue {
   min-height: 100svh;
   max-width: 1080px;

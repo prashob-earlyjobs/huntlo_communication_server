@@ -1,6 +1,6 @@
 import { MessageVendor, SendMessageBody } from "../types/message.types";
 import { sendGmailMessage } from "./gmail.service";
-import { makeHunarCall } from "./hunar.service";
+import { makeHunarCall, makeZyvkayCall } from "./hunar.service";
 import { sendSmtpMessage } from "./smtp.service";
 import { sendWhatsappMessageHuntlo, sendWhatsappMessageTextHuntlo } from "./whatsapp.service";
 
@@ -37,6 +37,14 @@ export const sendCall = async(messageBody: any) =>{
       agentId: messageBody.agent_id,
       data: messageBody.data,
       campignId: messageBody.campaign_id || messageBody.campignId,
+    });
+  } else if (messageBody.vendor === MessageVendor.ZYVKAY) {
+    return makeZyvkayCall({
+      campaignId: messageBody.campaign_id || messageBody.campaignId,
+      prompt: messageBody.prompt,
+      data: messageBody.data,
+      metadata: messageBody.metadata,
+      questions: messageBody.questions,
     });
   }
 }

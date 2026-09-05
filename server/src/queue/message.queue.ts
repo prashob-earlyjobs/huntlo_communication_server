@@ -8,6 +8,7 @@ import {v4 as uuidv4} from 'uuid';
 import { GmailConversation } from "../models/gmailConversation.model";
 import { WhatsappConversation, OverallAIStatus } from "../models/whatsappConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
+import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
 
 dotenv.config();
 
@@ -22,6 +23,29 @@ export const messageQueue = new Queue("messages", { connection });
 export async function connectRedis() {
   await messageQueue.waitUntilReady();
   console.log("\x1b[32m✔\x1b[0m Redis connected");
+}
+
+function normalizeCallQuestions(raw: unknown) {
+  let questions = raw;
+
+  if (typeof questions === "string") {
+    try {
+      questions = JSON.parse(questions);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(questions)) return [];
+
+  return questions
+    .map((item) => ({
+      id: String(item?.id || ""),
+      question: String(item?.question || ""),
+      required: item?.required === true || item?.required === "true",
+      pass_condition: String(item?.pass_condition || ""),
+    }))
+    .filter((item) => item.question);
 }
 
 export async function enqueueMessage(payload) {
@@ -55,6 +79,7 @@ export async function enqueueMessage(payload) {
       agent_id: payload.agent_id,
       campaign_id: payload.campaign_id,
       data: payload.data,
+      prompt: payload.prompt,
     },
     conversationId,
     metadata: payload.metadata,
@@ -232,9 +257,7 @@ export function startMessageWorker() {
 
       for (const call of calls) {
         const callId = call?.id || call?.call_id;
-        if (!callId) continue;
-
-        if (!call?.mobile_number) continue;
+        if (!callId || !call?.mobile_number) continue;
 
         await HunarCommunication.updateOne(
           {
@@ -248,6 +271,46 @@ export function startMessageWorker() {
               agentId: job.data.agent_id,
               campaignId: job.data.campaignId || job.data.campaign_id,
               mobileNumber: call.mobile_number,
+            },
+            $setOnInsert: {
+              questions: normalizeCallQuestions(job.data.questions),
+            },
+          },
+          { upsert: true }
+        );
+      }
+    } else if (job.data.vendor === MessageVendor.ZYVKAY) {
+      const calls = Array.isArray(result) ? result : result?.data || [];
+      const campaignId = job.data.campaignId || job.data.campaign_id;
+      const incomingQuestions = normalizeCallQuestions(job.data.questions);
+
+      for (const call of calls) {
+        const callId = call?.id || call?.call_id;
+        if (!callId || !call?.mobile_number) continue;
+
+        const callee = (job.data.data || []).find(
+          (item) => item?.mobile_number === call.mobile_number
+        );
+        const existing = await ZyvkaCommunication.findOne({
+          campaignId,
+          mobileNumber: call.mobile_number,
+        }).lean();
+        const hasQuestions = Boolean(existing?.questions?.length);
+
+        await ZyvkaCommunication.updateOne(
+          {
+            campaignId,
+            mobileNumber: call.mobile_number,
+          },
+          {
+            $set: {
+              callId,
+              campaignId,
+              mobileNumber: call.mobile_number,
+              calleeName: callee?.callee_name || "",
+              prompt: job.data.prompt || "",
+              metadata: job.data.metadata || {},
+              ...(!hasQuestions ? { questions: incomingQuestions } : {}),
             },
           },
           { upsert: true }

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { gmailWebhookController,hunerCallRecordingController,hunerCallResultController,hunerCallStatusController,hunerCallSummaryController,metaWebhookController } from "../controllers/webhook.controller";
+import { gmailWebhookController,hunerCallRecordingController,hunerCallResultController,hunerCallStatusController,hunerCallSummaryController,metaWebhookController, zyvkayWebhookController } from "../controllers/webhook.controller";
 
 const router = Router();
 
@@ -15,6 +15,6 @@ router.post("/hunar/call-result",hunerCallResultController)
 
 router.post("/hunar/call-summary",hunerCallSummaryController)
 
-
+router.post("/zyvkay", zyvkayWebhookController)
 
 export default router;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 
-type ChannelFilter = 'all' | 'gmail' | 'whatsapp' | 'hunar'
+type ChannelFilter = 'all' | 'gmail' | 'whatsapp' | 'hunar' | 'zyvkay'
 
 type ThreadMessage = {
   messageId?: string
@@ -14,7 +14,7 @@ type ThreadMessage = {
 
 type LogItem = {
   id: string
-  channel: 'gmail' | 'whatsapp' | 'hunar'
+  channel: 'gmail' | 'whatsapp' | 'hunar' | 'zyvkay'
   party: string
   status: string
   preview: string
@@ -41,7 +41,8 @@ const channels: Array<{ value: ChannelFilter; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'gmail', label: 'Gmail' },
   { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'hunar', label: 'Call' },
+  { value: 'hunar', label: 'Hunar' },
+  { value: 'zyvkay', label: 'Zyvka' },
 ]
 
 const statuses = [
@@ -60,7 +61,8 @@ const statuses = [
 const channelLabel = {
   gmail: 'Gmail',
   whatsapp: 'WhatsApp',
-  hunar: 'Call',
+  hunar: 'Hunar',
+  zyvkay: 'Zyvka',
 }
 
 function formatTime(iso: string) {

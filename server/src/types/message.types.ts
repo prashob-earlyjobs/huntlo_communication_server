@@ -11,6 +11,7 @@ export enum MessageVendor {
   SMTP = "smtp",
   META = "meta",
   HUNAR = "hunar",
+  ZYVKAY = "zyvkay"
 }
 
 export type SmtpConfig = {

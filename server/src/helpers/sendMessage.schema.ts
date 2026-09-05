@@ -44,8 +44,8 @@ export const sendMessageSchema = Joi.object({
         then: Joi.valid("huntlo").messages({
           "any.only": "whatsapp vendor must be huntlo",
         }),
-        otherwise: Joi.valid("hunar").messages({
-          "any.only": "call vendor must be hunar",
+        otherwise: Joi.valid("hunar", "zyvkay").messages({
+          "any.only": "call vendor must be hunar or zyvkay",
         }),
       }),
     })
@@ -164,8 +164,12 @@ export const sendMessageSchema = Joi.object({
 
   agent_id: Joi.when("type", {
     is: "call",
-    then: Joi.string().required().messages({
-      "any.required": "agent_id is required for call",
+    then: Joi.when("vendor", {
+      is: "hunar",
+      then: Joi.string().required().messages({
+        "any.required": "agent_id is required for hunar",
+      }),
+      otherwise: Joi.string().optional().allow("", null),
     }),
     otherwise: Joi.forbidden(),
   }),
@@ -205,7 +209,31 @@ export const sendMessageSchema = Joi.object({
     otherwise: Joi.forbidden(),
   }),
 
-  prompt: Joi.string().optional().allow(""),
+  questions: Joi.when("type", {
+    is: "call",
+    then: Joi.alternatives()
+      .try(
+        Joi.array().items(
+          Joi.object({
+            id: Joi.string().optional().allow("", null),
+            question: Joi.string().required(),
+            required: Joi.boolean().optional(),
+            pass_condition: Joi.string().optional().allow("", null),
+          })
+        ),
+        Joi.string()
+      )
+      .optional(),
+    otherwise: Joi.forbidden(),
+  }),
+
+  prompt: Joi.when("vendor", {
+    is: "zyvkay",
+    then: Joi.string().required().messages({
+      "any.required": "prompt is required for zyvkay",
+    }),
+    otherwise: Joi.string().optional().allow(""),
+  }),
   metadata: Joi.object().optional(),
   idempotencyKey: Joi.string().optional(),
 });

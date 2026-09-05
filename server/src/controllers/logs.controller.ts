@@ -2,21 +2,24 @@ import { Request, Response } from "express";
 import { GmailConversation } from "../models/gmailConversation.model";
 import { WhatsappConversation } from "../models/whatsappConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
+import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
 import { sendError, sendSuccess } from "../helpers/requestHandler";
 
-const CHANNELS = ["gmail", "whatsapp", "hunar"] as const;
+const CHANNELS = ["gmail", "whatsapp", "hunar", "zyvkay"] as const;
 type Channel = (typeof CHANNELS)[number];
 
 const COLLECTIONS: Record<Channel, string> = {
   gmail: "hcg_gmail_conversations",
   whatsapp: "hcg_whatsapp_conversations",
   hunar: "hcg_hunar_communications",
+  zyvkay: "hcg_zyvkay_communications",
 };
 
 const MODELS = {
   gmail: GmailConversation,
   whatsapp: WhatsappConversation,
   hunar: HunarCommunication,
+  zyvkay: ZyvkaCommunication,
 };
 
 function asText(value: unknown) {
@@ -165,6 +168,20 @@ const projections: Record<Channel, Record<string, unknown>> = {
     createdAt: "$createdAt",
     updatedAt: "$updatedAt",
   },
+  zyvkay: {
+    _id: 0,
+    id: { $toString: "$_id" },
+    channel: { $literal: "zyvkay" },
+    party: { $ifNull: ["$mobileNumber", ""] },
+    title: { $ifNull: ["$campaignId", "$callId"] },
+    status: mixedToString("call_status"),
+    preview: mixedToString("call_summary"),
+    direction: { $literal: "" },
+    threadId: { $ifNull: ["$callId", ""] },
+    campaignId: "$campaignId",
+    createdAt: "$createdAt",
+    updatedAt: "$updatedAt",
+  },
 };
 
 function sourceStages(channel: Channel) {
@@ -180,7 +197,7 @@ export async function getLogs(req: Request, res: Response) {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
 
     if (channelParam !== "all" && !CHANNELS.includes(channelParam as Channel)) {
-      return sendError(res, 400, "channel must be all, gmail, whatsapp, or hunar");
+      return sendError(res, 400, "channel must be all, gmail, whatsapp, hunar, or zyvkay");
     }
 
     const selected: Channel[] =
