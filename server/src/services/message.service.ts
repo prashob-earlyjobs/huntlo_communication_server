@@ -23,6 +23,7 @@ export const sendWhatsappMessage = async(messageBody: SendMessageBody) => {
         return sendWhatsappMessageTextHuntlo({
           to: messageBody.to,
           body: messageBody.body ?? "",
+          buttons: messageBody.buttons,
         })
     }
 };

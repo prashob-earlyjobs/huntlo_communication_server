@@ -240,6 +240,8 @@ export function startMessageWorker() {
               snippet: body,
               body,
               template: job.data.template,
+              type: job.data.buttons?.length ? "interactive" : "text",
+              buttons: job.data.buttons,
               direction: "outbound",
               internalDate: String(Date.now()),
             },

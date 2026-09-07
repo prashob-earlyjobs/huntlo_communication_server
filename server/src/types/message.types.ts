@@ -26,6 +26,11 @@ export type SmtpConfig = {
   imapPort?: number | string;
 };
 
+export type WhatsappButton = {
+  id: string;
+  title: string;
+};
+
 export type SendMessageBody = {
   type: MessageType;
   vendor: MessageVendor;
@@ -44,4 +49,5 @@ export type SendMessageBody = {
   idempotencyKey?: string;
   template?: string;
   variables?: string[];
+  buttons?: WhatsappButton[];
 };

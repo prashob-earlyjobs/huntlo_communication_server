@@ -470,6 +470,16 @@ function inboundWhatsappContent(message: Record<string, any>) {
     };
   }
 
+  const buttonReply =
+    message?.interactive?.button_reply || message?.button;
+  if (type === "interactive" || type === "button" || buttonReply) {
+    const body = String(
+      buttonReply?.title || buttonReply?.text || buttonReply?.id || buttonReply?.payload || ""
+    ).trim();
+    if (!body) return null;
+    return { type: "button", body, mediaId: "", mimeType: "", mediaPath: "" };
+  }
+
   return null;
 }
 
