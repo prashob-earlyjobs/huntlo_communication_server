@@ -162,6 +162,22 @@ export const sendMessageSchema = Joi.object({
     otherwise: Joi.forbidden(),
   }),
 
+  buttons: Joi.when("type", {
+    is: "whatsapp",
+    then: Joi.array()
+      .items(
+        Joi.object({
+          id: Joi.string().trim().min(1).max(256).required(),
+          title: Joi.string().trim().min(1).max(20).required(),
+        }).rename("text", "title")
+      )
+      .min(1)
+      .max(3)
+      .unique("id")
+      .optional(),
+    otherwise: Joi.forbidden(),
+  }),
+
   agent_id: Joi.when("type", {
     is: "call",
     then: Joi.when("vendor", {

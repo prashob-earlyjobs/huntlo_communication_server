@@ -21,6 +21,12 @@ const conversationMessageSchema = new Schema(
     body: String,
     template: String,
     type: { type: String, default: "text" },
+    buttons: [
+      {
+        id: String,
+        title: String,
+      },
+    ],
     mediaId: String,
     mimeType: String,
     mediaPath: String,
