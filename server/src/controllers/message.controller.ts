@@ -11,6 +11,10 @@ export async function sendMessage(req: Request, res: Response) {
     });
 
     if (error) {
+      console.error(
+        "POST /send validation failed:",
+        error.details.map((detail) => detail.message).join("; ")
+      );
       return sendError(
         res,
         400,
@@ -36,6 +40,16 @@ export async function sendMessage(req: Request, res: Response) {
       case "whatsapp":
       case "call":  
         result = await enqueueMessage({ ...value, autoReply });
+        console.log(
+          "POST /send queued",
+          value.type,
+          value.vendor,
+          "jobId=",
+          result?.jobId,
+          "to=",
+          value.to || value.data?.[0]?.mobile_number,
+          autoReply ? "autoReply" : ""
+        );
         break;
       default:
         return sendError(res, 400, "This message type is not implemented yet");
@@ -43,6 +57,7 @@ export async function sendMessage(req: Request, res: Response) {
 
     return sendSuccess(res, 200, result);
   } catch (error) {
+    console.error("POST /send failed:", error.message || error);
     return sendError(res, 500, error.message || "Internal server error");
   }
 }

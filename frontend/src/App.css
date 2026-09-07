@@ -246,6 +246,15 @@
   white-space: pre-wrap;
 }
 
+.logs-bubble-image {
+  display: block;
+  max-width: 220px;
+  max-height: 180px;
+  margin-top: 6px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
 .logs-pagination {
   display: flex;
   align-items: center;

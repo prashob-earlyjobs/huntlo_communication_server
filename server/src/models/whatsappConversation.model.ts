@@ -20,6 +20,10 @@ const conversationMessageSchema = new Schema(
     snippet: String,
     body: String,
     template: String,
+    type: { type: String, default: "text" },
+    mediaId: String,
+    mimeType: String,
+    mediaPath: String,
     direction: {
       type: String,
       enum: ["inbound", "outbound"],

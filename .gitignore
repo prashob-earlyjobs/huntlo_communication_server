@@ -6,6 +6,8 @@ dist-ssr
 !.env.example
 *.log
 dump.rdb
+uploads
+server/credentials/*.json
 *.local
 .DS_Store
 .idea

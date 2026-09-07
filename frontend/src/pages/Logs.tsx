@@ -8,6 +8,8 @@ type ThreadMessage = {
   to?: string
   body?: string
   template?: string
+  type?: string
+  mediaPath?: string
   direction?: string
   internalDate?: string
 }
@@ -358,12 +360,20 @@ export default function Logs() {
               >
                 <span className="logs-bubble-meta">
                   {message.direction || 'message'}
+                  {message.type === 'image' ? ' · image' : ''}
                   {message.template ? ` · ${message.template}` : ''}
                   {message.internalDate
                     ? ` · ${formatMessageTime(message.internalDate)}`
                     : ''}
                 </span>
                 <span className="logs-bubble-body">{message.body || '—'}</span>
+                {message.mediaPath ? (
+                  <img
+                    className="logs-bubble-image"
+                    src={message.mediaPath}
+                    alt={message.body || 'WhatsApp image'}
+                  />
+                ) : null}
               </li>
             ))}
           </ol>
