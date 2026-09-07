@@ -11,7 +11,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5055',
+        target: 'https://huntlo-communication-server-smoky.vercel.app',
         changeOrigin: true,
         ws: true,
       },
