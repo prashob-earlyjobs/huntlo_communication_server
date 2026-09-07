@@ -10,6 +10,8 @@ import { getGmailAccessToken } from "../helpers/gmailToken";
 import { WhatsappConversation } from "../models/whatsappConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
 import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
+import { downloadWhatsappInboundImage } from "../helpers/whatsappMedia";
+import { uploadImage } from "../services/storage.service";
 
 
 const statusPrompt = `You are an AI assistant that screens candidates over email.
@@ -444,9 +446,32 @@ export const gmailWebhookController = async (req: Request, res: Response) => {
     console.error(error);
     return res.status(200).end();
   }
-};
+}; 
 
 
+
+function inboundWhatsappContent(message: Record<string, any>) {
+  const type = String(message?.type || "").toLowerCase();
+
+  if (type === "text" || message?.text?.body) {
+    const body = String(message.text?.body || "").trim();
+    if (!body) return null;
+    return { type: "text", body, mediaId: "", mimeType: "", mediaPath: "" };
+  }
+
+  if (type === "image" || message?.image?.id) {
+    const caption = String(message.image?.caption || "").trim();
+    return {
+      type: "image",
+      body: caption || "[Image]",
+      mediaId: String(message.image?.id || ""),
+      mimeType: String(message.image?.mime_type || "image/jpeg"),
+      mediaPath: "",
+    };
+  }
+
+  return null;
+}
 
 export const metaWebhookController = async (req: Request, res: Response) => {
   try {
@@ -459,11 +484,30 @@ export const metaWebhookController = async (req: Request, res: Response) => {
         for (const message of value.messages || []) {
           const phone = message.from;
           const messageId = message.id;
-          const text =
-            message.type === "text" ? message.text?.body : null;
+          const inbound = inboundWhatsappContent(message);
 
-          if (!phone || !messageId || !text) continue;
+          if (!phone || !messageId || !inbound) continue;
 
+          if (inbound.type === "image" && inbound.mediaId) {
+            const thread = await WhatsappConversation.findOne({
+              phone,
+              autoReply: true,
+            }).select("campaignId");
+            const saved = await downloadWhatsappInboundImage({
+              mediaId: inbound.mediaId,
+              messageId,
+            });
+            if (saved) {
+              inbound.mimeType = saved.mimeType;
+              inbound.mediaPath = await uploadImage({
+                campaignId: thread?.campaignId || "unknown",
+                filename: saved.filename,
+                buffer: saved.buffer,
+                contentType: saved.mimeType,
+              });
+            }
+          }
+ 
           await WhatsappConversation.updateOne(
             {
               phone,
@@ -478,8 +522,12 @@ export const metaWebhookController = async (req: Request, res: Response) => {
                   to:
                     value.metadata?.phone_number_id ||
                     process.env.HUNTLO_WHATSAPP_PHONE_NUMBER_ID,
-                  snippet: text,
-                  body: text,
+                  snippet: inbound.body,
+                  body: inbound.body,
+                  type: inbound.type,
+                  mediaId: inbound.mediaId,
+                  mimeType: inbound.mimeType,
+                  mediaPath: inbound.mediaPath || undefined,
                   direction: "inbound",
                   internalDate: String(
                     Number(message.timestamp)
@@ -507,6 +555,7 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             from: m.from,
             to: m.to,
             body: m.body,
+            type: m.type || "text",
             direction: m.direction,
           })) ?? [];
 
