@@ -102,10 +102,19 @@ Allowed overallAIStatus values: interested, not_interested, in_qualification, no
 
 
 
+
+
+const TERMINAL_AI_STATUSES = [
+  OverallAIStatus.NOT_INTERESTED,
+  OverallAIStatus.NOT_QUALIFIED,
+  OverallAIStatus.QUALIFIED,
+  OverallAIStatus.IN_SCREENING,
+  OverallAIStatus.SHORTLISTED,
+  OverallAIStatus.REJECTED,
+];
 const hunarQuestionPrompt = `You are an AI assistant that screens candidates over a call.
 
- knockout/screening questions will be asked by the assistant, 
-
+knockout/screening questions will be asked by the assistant,
 
 ## Original questions rule
 Each item includes id, question, required, and pass_condition. Evaluate against pass_condition.
@@ -118,37 +127,66 @@ Hunar call_result JSON is below. Keys like q_1_answer map to question id q-1.
 ## How to evaluate
 
 1. Extract all knockout questions from the original questions. Do not skip any item.
-3. Map the provided answers and questions along with the result
-5. Do not infer answers from unrelated text.
-6. Evaluate each question independently:
-   - unanswered: candidate has not clearly answered it in the thread
+2. Map the provided answers and questions along with the result.
+3. Do not infer answers from unrelated text.
+4. Evaluate each question independently:
+   - unanswered: candidate has not clearly answered it
    - passed: candidate answered it and the pass_condition is met
    - failed: candidate answered it and the pass_condition is not met
-7. Detect opt-out / not interested from inbound text (they decline the role, ask to stop, or say they are not interested).
+5. Detect opt-out / not interested from candidate text.
+
+IMPORTANT:
+- The "required" field from the original question is authoritative.
+- Only REQUIRED questions affect the overall qualification status.
+- Optional questions must still be evaluated and included in the output, but their status must NOT affect overallAIStatus.
 
 ## Status rules
 
+Determine overallAIStatus ONLY from the knockout questions provided in {{questions}} and their evaluated statuses.
+
+Do NOT use these fields to determine whether the candidate is qualified:
+- final_outcome
+- eligibility_reason
+- eligibility_score
+- summary
+- interest_level
+- candidate_status
+
+These fields may describe the call, but they must NOT override the question-level evaluation.
+
 Set exactly one overallAIStatus, in this order:
 
-1. not_qualified — any required knockout is failed.
-2. qualified — every required knockout is passed. Calendly has been or should be sent. Do not ask more questions.
+1. not_interested
+   - Candidate explicitly declines the role, asks to stop, or says they are not interested.
 
-Set overallAIDescription to a internal reason for the status. Do not put this text in the email.
+2. not_qualified
+   - Any REQUIRED question has status "failed".
+   - A failed OPTIONAL question does not make the candidate not_qualified.
 
-If overallAIStatus is interested:
-- Briefly acknowledge and start screening by asking ALL required questions in this same email. In that case prefer in_qualification instead of interested.
+3. qualified
+   - ALL REQUIRED questions have status "passed".
+   - OPTIONAL questions do not need to be answered.
+   - OPTIONAL questions do not need to be passed.
+   - An unanswered OPTIONAL question must NOT cause in_qualification.
+   - An incomplete call must NOT prevent qualification when all REQUIRED questions are passed.
+   - Do not ask more questions.
 
-If overallAIStatus is qualified:
-- This is the final scheduling message.
-- Include the exact Calendly URL from the original prompt. Do not modify, shorten, replace, or encode it differently.
-- Do not ask any more screening questions.
+
+IMPORTANT STATUS RULE:
+If there are no unanswered or failed REQUIRED questions, the candidate MUST NOT be "in_qualification".
+
+If all REQUIRED questions are passed, the candidate MUST be "qualified", regardless of whether the call_result says:
+- "Incomplete Call"
+- screening was incomplete
+- the call ended early
+- additional OPTIONAL questions were not asked or answered.
 
 ## Output
 
 Return ONLY valid JSON. No markdown. No extra text.
 
 {
-  "overallAIStatus": "in_qualification",
+  "overallAIStatus": "",
   "overallAIDescription": "",
   "questions": [
     {
@@ -162,33 +200,68 @@ Return ONLY valid JSON. No markdown. No extra text.
 }
 
 questions must include every knockout extracted from the original prompt.
+
 For each question:
 - answer: the candidate's inbound answer text, or null if they have not answered it yet
 - status: unanswered | passed | failed
 - description: a short internal reason for this question's status. Do not put this text in the email.
-Do not use Candidate Details as an answer.
-Allowed overallAIStatus values: interested, not_interested, in_qualification, not_qualified, qualified.`
 
-const TERMINAL_AI_STATUSES = [
-  OverallAIStatus.NOT_INTERESTED,
-  OverallAIStatus.NOT_QUALIFIED,
-  OverallAIStatus.QUALIFIED,
-  OverallAIStatus.IN_SCREENING,
-  OverallAIStatus.SHORTLISTED,
-  OverallAIStatus.REJECTED,
-];
+Do not use Candidate Details as an answer.
+
+Allowed overallAIStatus values: interested, not_interested, in_qualification, not_qualified, qualified.`;
+
+function extractFirstJsonObject(text: string) {
+  const start = text.indexOf("{");
+  if (start === -1) return "";
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+
+  return "";
+}
 
 function parseGeminiJson(text: string) {
   const cleaned = String(text || "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) {
+  const json = extractFirstJsonObject(cleaned);
+  if (!json) {
+    console.error("Gemini response is not valid JSON:", cleaned.slice(0, 500));
     throw new Error("Gemini response is not valid JSON");
   }
-  return JSON.parse(cleaned.slice(start, end + 1));
+  try {
+    return JSON.parse(json);
+  } catch (error) {
+    console.error("Gemini JSON parse failed:", json.slice(0, 500));
+    throw error;
+  }
 }
 
 export const gmailWebhookController = async (req: Request, res: Response) => {
