@@ -100,7 +100,25 @@ Do not use Candidate Details as an answer.
 Allowed overallAIStatus values: interested, not_interested, in_qualification, not_qualified, qualified.`;
 
 
+const isYesOrNoQuestion = `You are a question classifier.
 
+Determine whether the given question is a Yes/No question.
+
+A Yes/No question is a question that can be naturally answered with "Yes" or "No".
+
+Question:
+{{question}}
+
+Return ONLY valid JSON in this format:
+{
+  "is_yes_no": true
+}
+
+Rules:
+- Return true if the question expects a Yes/No answer.
+- Return false if it requires a descriptive, numeric, multiple-choice, or open-ended answer.
+- Do not consider the question's topic; only consider its expected answer format.
+- Do not include any explanation.`
 
 
 
@@ -649,6 +667,17 @@ export const metaWebhookController = async (req: Request, res: Response) => {
           const generatedReply = await generateGeminiContent(prompt);
           if (!generatedReply?.trim()) continue;
 
+          const formatted = isYesOrNoQuestion.replace("{{question}}", generatedReply);
+          let isYesNo = false;
+          try {
+            const classified = parseGeminiJson(
+              await generateGeminiContent(formatted)
+            );
+            isYesNo = classified?.is_yes_no === true;
+          } catch (error) {
+            console.error("Yes/No classification failed:", (error as Error).message);
+          }
+
           await enqueueMessage({
             type: "whatsapp",
             vendor: "huntlo",
@@ -656,6 +685,14 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             body: generatedReply,
             threadId: whatsappThread.threadId,
             autoReply: true,
+            ...(isYesNo
+              ? {
+                  buttons: [
+                    { id: "yes", title: "Yes" },
+                    { id: "no", title: "No" },
+                  ],
+                }
+              : {}),
           });
 
           const promptWithReply =
