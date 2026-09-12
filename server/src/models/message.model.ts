@@ -25,6 +25,7 @@ const messageSchema = new mongoose.Schema(
         MessageVendor.META,
         MessageVendor.HUNAR,
         MessageVendor.ZYVKAY,
+        MessageVendor.ZOHO,
       ],
       required: true,
     },

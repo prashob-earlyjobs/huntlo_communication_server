@@ -8,5 +8,8 @@
     "build:frontend": "npm run build --prefix frontend",
     "build:server": "npm run build --prefix server",
     "start:server": "npm run start --prefix server"
+  },
+  "dependencies": {
+    "node-cron": "^4.6.0"
   }
 }

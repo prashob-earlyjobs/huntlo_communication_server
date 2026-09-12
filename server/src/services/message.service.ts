@@ -3,7 +3,7 @@ import { sendGmailMessage } from "./gmail.service";
 import { makeHunarCall, makeZyvkayCall } from "./hunar.service";
 import { sendSmtpMessage } from "./smtp.service";
 import { sendWhatsappMessageHuntlo, sendWhatsappMessageTextHuntlo } from "./whatsapp.service";
-
+import { sendZohoMessage } from "./zoho.service";
 
 
 export const sendWhatsappMessage = async(messageBody: SendMessageBody) => {
@@ -82,6 +82,20 @@ export const sendEmailMessage = async (messageBody: SendMessageBody) => {
   if (messageBody.vendor === MessageVendor.OUTLOOK) {
     console.log("outlook needs to be configured");
     return;
+  }
+
+  if (messageBody.vendor === MessageVendor.ZOHO) {
+
+    return sendZohoMessage({
+      accessToken: messageBody.accessToken,
+      accountId: messageBody.accountId,
+      dataCenter: messageBody.dataCenter,
+      from: messageBody.fromAddress || messageBody.from,
+      to: messageBody.to,
+      subject: messageBody.subject ?? "",
+      text: messageBody.text || messageBody.body,
+      html: messageBody.html,
+    })
   }
 
 
