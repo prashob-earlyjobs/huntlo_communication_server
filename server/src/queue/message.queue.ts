@@ -9,6 +9,7 @@ import { GmailConversation } from "../models/gmailConversation.model";
 import { WhatsappConversation, OverallAIStatus } from "../models/whatsappConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
 import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
+import { ZohoConversation } from "../models/zohoConversation.model";
 
 dotenv.config();
 
@@ -318,6 +319,50 @@ export function startMessageWorker() {
           { upsert: true }
         );
       }
+    } else if (job.data.vendor === MessageVendor.ZOHO && result?.messageId) {
+      const fromAddress = String(
+        job.data.fromAddress || job.data.from || ""
+      ).trim();
+      
+      const threadId =
+        result.threadId ||
+        job.data.threadId ||
+        job.data.conversationId ||
+        result.messageId;
+      const body = job.data.body || job.data.text || job.data.html || "";
+
+      await ZohoConversation.updateOne(
+        { threadId },
+        {
+          $setOnInsert: {
+            threadId,
+            emailAddress: fromAddress,
+            accountId: job.data.accountId,
+            dataCenter: job.data.dataCenter || "com",
+            providerThreadId: result.messageId,
+            subject: job.data.subject,
+            autoReply: job.data.autoReply,
+            prompt: job.data.prompt,
+            campaignId: job.data.campaignId || job.data.campaign_id,
+            overallAIStatus: OverallAIStatus.AWAITING_REPLY,
+            overallAIDescription: "Outreach sent, no candidate reply yet",
+          },
+          $push: {
+            messages: {
+              messageId: result.messageId,
+              from: fromAddress,
+              to: job.data.to,
+              subject: job.data.subject,
+              snippet: body,
+              body,
+              html: job.data.html,
+              direction: "outbound",
+              internalDate: String(Date.now()),
+            },
+          },
+        },
+        { upsert: true }
+      );
     }
 
 

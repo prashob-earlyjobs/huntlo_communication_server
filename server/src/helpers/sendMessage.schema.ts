@@ -36,7 +36,7 @@ export const sendMessageSchema = Joi.object({
     .required()
     .when("type", {
       is: "email",
-      then: Joi.valid("gmail", "outlook", "smtp").messages({
+      then: Joi.valid("gmail", "outlook", "smtp","zoho").messages({
         "any.only": "email vendor must be gmail, outlook, or smtp",
       }),
       otherwise: Joi.when("type", {
@@ -117,18 +117,49 @@ export const sendMessageSchema = Joi.object({
   }),
 
   accessToken: Joi.when("vendor", {
-    is: Joi.valid("gmail", "outlook"),
+    is: Joi.valid("gmail", "outlook", "zoho"),
     then: Joi.string().min(1).required().messages({
-      "any.required": "accessToken is required for gmail and outlook",
-      "string.empty": "accessToken is required for gmail and outlook",
-      "string.min": "accessToken is required for gmail and outlook",
+      "any.required": "accessToken is required for gmail, outlook, and zoho",
+      "string.empty": "accessToken is required for gmail, outlook, and zoho",
+      "string.min": "accessToken is required for gmail, outlook, and zoho",
     }),
     otherwise: Joi.forbidden(),
   }),
 
   refreshToken: Joi.when("vendor", {
-    is: Joi.valid("gmail", "outlook"),
+    is: Joi.valid("gmail", "outlook", "zoho"),
     then: Joi.string().optional(),
+    otherwise: Joi.forbidden(),
+  }),
+
+  accountId: Joi.when("vendor", {
+    is: "zoho",
+    then: Joi.string().min(1).required().messages({
+      "any.required": "accountId is required for zoho",
+      "string.empty": "accountId is required for zoho",
+      "string.min": "accountId is required for zoho",
+    }),
+    otherwise: Joi.forbidden(),
+  }),
+
+  dataCenter: Joi.when("vendor", {
+    is: "zoho",
+    then: Joi.string().optional().allow("", null),
+    otherwise: Joi.forbidden(),
+  }),
+
+  fromAddress: Joi.when("vendor", {
+    is: "zoho",
+    then: Joi.string().email().required().messages({
+      "any.required": "fromAddress is required for zoho",
+      "string.email": "fromAddress must be a valid email address",
+    }),
+    otherwise: Joi.forbidden(),
+  }),
+
+  text: Joi.when("vendor", {
+    is: "zoho",
+    then: Joi.string().optional().allow(""),
     otherwise: Joi.forbidden(),
   }),
 

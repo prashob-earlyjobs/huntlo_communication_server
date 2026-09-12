@@ -14,7 +14,7 @@ import { downloadWhatsappInboundImage } from "../helpers/whatsappMedia";
 import { uploadImage } from "../services/storage.service";
 
 
-const statusPrompt = `You are an AI assistant that screens candidates over email.
+export const statusPrompt = `You are an AI assistant that screens candidates over email.
 
 The original recruiter prompt is between the markers below. Extract the job description, candidate details, knockout/screening questions, Calendly URL, and any drafting rules from it.
 
@@ -264,7 +264,7 @@ function extractFirstJsonObject(text: string) {
   return "";
 }
 
-function parseGeminiJson(text: string) {
+export function parseGeminiJson(text: string) {
   const cleaned = String(text || "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")

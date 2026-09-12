@@ -3,6 +3,7 @@ import app from "./app";
 import { connectDb } from "./db/mongoose";
 import { connectRedis, startMessageWorker } from "./queue/message.queue";
 import { attachQueueRealtime } from "./sockets/queue.socket";
+import { startCrons } from "./cron";
 
 dotenv.config();
 
@@ -13,6 +14,7 @@ async function start() {
   await connectDb();
   await connectRedis();
   startMessageWorker();
+  startCrons();
 
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     console.log("\x1b[32m✔\x1b[0m Google credentials loaded");

@@ -11,7 +11,8 @@ export enum MessageVendor {
   SMTP = "smtp",
   META = "meta",
   HUNAR = "hunar",
-  ZYVKAY = "zyvkay"
+  ZYVKAY = "zyvkay",
+  ZOHO = "zoho"
 }
 
 export type SmtpConfig = {
@@ -50,4 +51,8 @@ export type SendMessageBody = {
   template?: string;
   variables?: string[];
   buttons?: WhatsappButton[];
+  accountId?:string,
+  dataCenter?:string,
+  fromAddress?:string,
+  text?:string
 };
