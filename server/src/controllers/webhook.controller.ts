@@ -116,6 +116,7 @@ Return ONLY valid JSON in this format:
 
 Rules:
 - Return true ONLY if the expected answer is simply "Yes" or "No".
+- if the question is asking for resume return false.
 - Return false if the question requests a file, document, resume, image, attachment, or other upload.
 - Return false if the question asks the user to share, provide, upload, submit, send, or attach something.
 - Return false for questions that require descriptive, numeric, multiple-choice, or open-ended answers.
