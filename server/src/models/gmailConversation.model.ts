@@ -21,6 +21,13 @@ const conversationMessageSchema = new Schema(
     snippet: String,
     body: String,
     html: String,
+    attachments: [
+      {
+        filename: String,
+        mimeType: String,
+        mediaPath: String,
+      },
+    ],
     direction: {
       type: String,
       enum: ["inbound", "outbound"],
