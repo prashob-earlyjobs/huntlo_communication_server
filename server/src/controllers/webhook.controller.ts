@@ -725,7 +725,8 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             const classified = parseGeminiJson(
               await generateGeminiContent(formatted)
             );
-            isYesNo = classified?.is_yes_no === true;
+            //temp commented out to avoid false positives
+            // isYesNo = classified?.is_yes_no === true;
           } catch (error) {
             console.error("Yes/No classification failed:", (error as Error).message);
           }
