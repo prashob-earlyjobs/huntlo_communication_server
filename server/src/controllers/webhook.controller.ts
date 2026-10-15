@@ -547,6 +547,10 @@ export const gmailWebhookController = async (req: Request, res: Response) => {
 
 const WHATSAPP_MEDIA_TYPES = ["image", "video", "audio", "document", "sticker"] as const;
 
+const WHATSAPP_FILE_RULE = `
+File questions: a screening question that asks for a resume, CV, document, image, or any file stays unanswered until an inbound message has type document, image, video, audio, or sticker, or a non-empty mediaPath. Yes, sure, ok, or a promise to share does not answer it. Ask for the file again. Do not close, qualify, or send a scheduling link until that file message exists.
+`;
+
 function inboundWhatsappBody(message: Record<string, any>, type: string) {
   if (type === "location" || message.location) {
     const location = message.location || {};
@@ -709,11 +713,13 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             to: m.to,
             body: m.body,
             type: m.type || "text",
+            mediaPath: m.mediaPath || "",
             direction: m.direction,
           })) ?? [];
 
           const prompt =
             (whatsappThread.prompt || "") +
+            WHATSAPP_FILE_RULE +
             "\n\n" +
             JSON.stringify(previousMessages, null, 2);
           const generatedReply = await generateGeminiContent(prompt);
@@ -772,7 +778,8 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             }
           );
 
-          const actualPrompt = statusPrompt.replace("{{prompt}}", promptWithReply);
+          const actualPrompt =
+            statusPrompt.replace("{{prompt}}", promptWithReply) + WHATSAPP_FILE_RULE;
           const overallAIStatus = parseGeminiJson(
             await generateGeminiContent(actualPrompt)
           );
