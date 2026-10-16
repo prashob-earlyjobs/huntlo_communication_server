@@ -10,7 +10,7 @@ import { getGmailAccessToken } from "../helpers/gmailToken";
 import { WhatsappConversation } from "../models/whatsappConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
 import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
-import { downloadWhatsappInboundImage } from "../helpers/whatsappMedia";
+import { downloadWhatsappInboundMedia } from "../helpers/whatsappMedia";
 import { uploadImage } from "../services/storage.service";
 
 
@@ -115,11 +115,15 @@ Return ONLY valid JSON in this format:
 }
 
 Rules:
-- Return true if the question expects a Yes/No answer.
-- Return false if it requires a descriptive, numeric, multiple-choice, or open-ended answer.
-- Do not consider the question's topic; only consider its expected answer format.
-- Do not include any explanation.`
-
+- Return true ONLY if the expected answer is simply "Yes" or "No".
+- if the question is asking for resume return false.
+- Return false if the question requests a file, document, resume, image, attachment, or other upload.
+- Return false if the question asks the user to share, provide, upload, submit, send, or attach something.
+- Return false for questions that require descriptive, numeric, multiple-choice, or open-ended answers.
+- Polite requests phrased as questions (e.g., "Could you please share your resume?") are NOT Yes/No questions when they request an action or information.
+- Do not classify based only on the presence of words like "could", "can", "do", "is", or "are". Consider the actual expected response.
+- Do not consider the question's topic; consider only its expected answer format.
+- Do not include any explanation.`;
 
 
 const TERMINAL_AI_STATUSES = [
@@ -541,37 +545,88 @@ export const gmailWebhookController = async (req: Request, res: Response) => {
 
 
 
+const WHATSAPP_MEDIA_TYPES = ["image", "video", "audio", "document", "sticker"] as const;
+
+const WHATSAPP_FILE_RULE = `
+File questions: a screening question that asks for a resume, CV, document, image, or any file stays unanswered until an inbound message has type document, image, video, audio, or sticker, or a non-empty mediaPath. Yes, sure, ok, or a promise to share does not answer it. Ask for the file again. Do not close, qualify, or send a scheduling link until that file message exists.
+`;
+
+function inboundWhatsappBody(message: Record<string, any>, type: string) {
+  if (type === "location" || message.location) {
+    const location = message.location || {};
+    const label = [location.name, location.address].filter(Boolean).join(", ");
+    const coords = [location.latitude, location.longitude].filter((value) => value != null).join(", ");
+    return [label, coords].filter(Boolean).join(" — ") || "[Location]";
+  }
+
+  if (type === "contacts" || Array.isArray(message.contacts)) {
+    const contact = message.contacts?.[0] || {};
+    const name = contact.name?.formatted_name || contact.name?.first_name || "";
+    const phone = contact.phones?.[0]?.phone || "";
+    return [name, phone].filter(Boolean).join(" ") || "[Contact]";
+  }
+
+  if (type === "reaction" || message.reaction) {
+    return String(message.reaction?.emoji || "[Reaction]");
+  }
+
+  const buttonReply = message.interactive?.button_reply || message.button;
+  if (buttonReply) {
+    return String(
+      buttonReply.title || buttonReply.text || buttonReply.id || buttonReply.payload || ""
+    ).trim();
+  }
+
+  const listReply = message.interactive?.list_reply;
+  if (listReply) {
+    return String(listReply.title || listReply.id || listReply.description || "").trim();
+  }
+
+  return "";
+}
+
 function inboundWhatsappContent(message: Record<string, any>) {
   const type = String(message?.type || "").toLowerCase();
 
   if (type === "text" || message?.text?.body) {
     const body = String(message.text?.body || "").trim();
     if (!body) return null;
-    return { type: "text", body, mediaId: "", mimeType: "", mediaPath: "" };
+    return { type: "text", body, mediaId: "", mimeType: "", filename: "", mediaPath: "" };
   }
 
-  if (type === "image" || message?.image?.id) {
-    const caption = String(message.image?.caption || "").trim();
+  const mediaType = WHATSAPP_MEDIA_TYPES.find(
+    (kind) => type === kind || message?.[kind]?.id
+  );
+  if (mediaType) {
+    const media = message[mediaType] || {};
+    const caption = String(media.caption || "").trim();
+    const filename = String(media.filename || "").trim();
     return {
-      type: "image",
-      body: caption || "[Image]",
-      mediaId: String(message.image?.id || ""),
-      mimeType: String(message.image?.mime_type || "image/jpeg"),
+      type: mediaType,
+      body: caption || filename || `[${mediaType}]`,
+      mediaId: String(media.id || ""),
+      mimeType: String(media.mime_type || ""),
+      filename,
       mediaPath: "",
     };
   }
 
-  const buttonReply =
-    message?.interactive?.button_reply || message?.button;
+  const buttonReply = message?.interactive?.button_reply || message?.button;
   if (type === "interactive" || type === "button" || buttonReply) {
-    const body = String(
-      buttonReply?.title || buttonReply?.text || buttonReply?.id || buttonReply?.payload || ""
-    ).trim();
+    const body = inboundWhatsappBody(message, type);
     if (!body) return null;
-    return { type: "button", body, mediaId: "", mimeType: "", mediaPath: "" };
+    return { type: "button", body, mediaId: "", mimeType: "", filename: "", mediaPath: "" };
   }
 
-  return null;
+  const body = inboundWhatsappBody(message, type) || `[${type || "message"}]`;
+  return {
+    type: type || "unknown",
+    body,
+    mediaId: "",
+    mimeType: "",
+    filename: "",
+    mediaPath: "",
+  };
 }
 
 export const metaWebhookController = async (req: Request, res: Response) => {
@@ -589,14 +644,15 @@ export const metaWebhookController = async (req: Request, res: Response) => {
 
           if (!phone || !messageId || !inbound) continue;
 
-          if (inbound.type === "image" && inbound.mediaId) {
+          if (inbound.mediaId) {
             const thread = await WhatsappConversation.findOne({
               phone,
               autoReply: true,
             }).select("campaignId");
-            const saved = await downloadWhatsappInboundImage({
+            const saved = await downloadWhatsappInboundMedia({
               mediaId: inbound.mediaId,
               messageId,
+              filename: inbound.filename,
             });
             if (saved) {
               inbound.mimeType = saved.mimeType;
@@ -657,11 +713,13 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             to: m.to,
             body: m.body,
             type: m.type || "text",
+            mediaPath: m.mediaPath || "",
             direction: m.direction,
           })) ?? [];
 
           const prompt =
             (whatsappThread.prompt || "") +
+            WHATSAPP_FILE_RULE +
             "\n\n" +
             JSON.stringify(previousMessages, null, 2);
           const generatedReply = await generateGeminiContent(prompt);
@@ -673,7 +731,8 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             const classified = parseGeminiJson(
               await generateGeminiContent(formatted)
             );
-            isYesNo = classified?.is_yes_no === true;
+            //temp commented out to avoid false positives
+            // isYesNo = classified?.is_yes_no === true;
           } catch (error) {
             console.error("Yes/No classification failed:", (error as Error).message);
           }
@@ -719,7 +778,8 @@ export const metaWebhookController = async (req: Request, res: Response) => {
             }
           );
 
-          const actualPrompt = statusPrompt.replace("{{prompt}}", promptWithReply);
+          const actualPrompt =
+            statusPrompt.replace("{{prompt}}", promptWithReply) + WHATSAPP_FILE_RULE;
           const overallAIStatus = parseGeminiJson(
             await generateGeminiContent(actualPrompt)
           );
