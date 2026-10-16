@@ -83,7 +83,6 @@ export const sendEmailMessage = async (messageBody: SendMessageBody) => {
   if (messageBody.vendor === MessageVendor.OUTLOOK) {
     
     return sendOutlookMessage({
-      accessToken: messageBody.accessToken,
       to: messageBody.to,
       subject: messageBody.subject,
       text: messageBody.body,
