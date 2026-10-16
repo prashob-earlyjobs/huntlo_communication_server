@@ -102,10 +102,17 @@ export const sendMessageSchema = Joi.object({
     otherwise: Joi.forbidden(),
   }),
 
-  from: Joi.when("type", {
-    is: "email",
-    then: Joi.string().optional().allow(null, ""),
-    otherwise: Joi.forbidden(),
+  from: Joi.when("vendor", {
+    is: "outlook",
+    then: Joi.string().email().required().messages({
+      "any.required": "from is required for outlook",
+      "string.email": "from must be a valid email address",
+    }),
+    otherwise: Joi.when("type", {
+      is: "email",
+      then: Joi.string().optional().allow(null, ""),
+      otherwise: Joi.forbidden(),
+    }),
   }),
 
   smtp: Joi.when("vendor", {
@@ -117,13 +124,17 @@ export const sendMessageSchema = Joi.object({
   }),
 
   accessToken: Joi.when("vendor", {
-    is: Joi.valid("gmail", "outlook", "zoho"),
+    is: Joi.valid("gmail", "zoho"),
     then: Joi.string().min(1).required().messages({
       "any.required": "accessToken is required for gmail, outlook, and zoho",
       "string.empty": "accessToken is required for gmail, outlook, and zoho",
       "string.min": "accessToken is required for gmail, outlook, and zoho",
     }),
-    otherwise: Joi.forbidden(),
+    otherwise: Joi.when("vendor", {
+      is: "outlook",
+      then: Joi.string().optional().allow("", null),
+      otherwise: Joi.forbidden(),
+    }),
   }),
 
   refreshToken: Joi.when("vendor", {
