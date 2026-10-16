@@ -1,9 +1,11 @@
 import { Router } from "express";
-import { gmailWebhookController,hunerCallRecordingController,hunerCallResultController,hunerCallStatusController,hunerCallSummaryController,metaWebhookController, zyvkayWebhookController } from "../controllers/webhook.controller";
+import { gmailWebhookController,hunerCallRecordingController,hunerCallResultController,hunerCallStatusController,hunerCallSummaryController,metaWebhookController, zyvkayWebhookController, outlookWebhookController } from "../controllers/webhook.controller";
 
 const router = Router();
 
 router.post("/gmail", gmailWebhookController);
+
+router.post("/outlook", outlookWebhookController);
 
 router.post("/meta-whatsapp", metaWebhookController);
 
