@@ -8,10 +8,15 @@ import { generateGeminiContent } from "../helpers/gamini";
 import { enqueueMessage } from "../queue/message.queue";
 import { getGmailAccessToken } from "../helpers/gmailToken";
 import { WhatsappConversation } from "../models/whatsappConversation.model";
+import { OutlookConversation } from "../models/outlookConversation.model";
 import { HunarCommunication } from "../models/hunarCommunication.model";
 import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
 import { downloadWhatsappInboundMedia } from "../helpers/whatsappMedia";
 import { uploadImage } from "../services/storage.service";
+import {
+  fetchOutlookWebhookMessage,
+  linkOutlookWebhookMessage,
+} from "../services/outlook.service";
 
 
 export const statusPrompt = `You are an AI assistant that screens candidates over email.
@@ -1130,4 +1135,123 @@ async function saveZyvkayWebhook(body: Record<string, any>) {
 
 
 
+export const outlookWebhookController = (req: Request, res: Response) => {
+  const rawToken = req.query.validationToken;
+  const validationToken = Array.isArray(rawToken) ? rawToken[0] : rawToken;
+  if (typeof validationToken === "string" && validationToken.length > 0) {
+    res.status(200).type("text/plain").send(validationToken);
+    return;
+  }
 
+  const body = req.body || {};
+  res.status(202).end();
+
+  const notifications = Array.isArray(body.value) ? body.value : [];
+  for (const notification of notifications) {
+    const resource = String(notification?.resource || "");
+    const match = resource.match(/Users\/([^/]+)\/Messages\/(.+)$/i);
+    if (!match) continue;
+    const [, userId, messageId] = match;
+    fetchOutlookWebhookMessage(userId, messageId)
+      .then(async (message) => {
+        console.log("outlook webhook message", {
+          changeType: notification.changeType,
+          ...message,
+        });
+        console.log("outlook webhook text", message.text);
+
+        const outlookConversation = await linkOutlookWebhookMessage(messageId, message);
+        if (!outlookConversation || !message.isInbox) return;
+
+        const claimed = await OutlookConversation.findOneAndUpdate(
+          {
+            _id: outlookConversation._id,
+            autoReply: true,
+            lastRepliedInboundId: { $ne: messageId },
+            overallAIStatus: { $nin: TERMINAL_AI_STATUSES },
+          },
+          { $set: { lastRepliedInboundId: messageId } }
+        );
+        if (!claimed) return;
+
+        const previousMessages = (outlookConversation.messages || []).map((item) => ({
+          from: item.from,
+          to: item.to,
+          subject: item.subject,
+          body: item.body,
+          html: item.html,
+          direction: item.direction,
+        }));
+        const prompt =
+          (outlookConversation.prompt || "") +
+          "\n\n" +
+          JSON.stringify(previousMessages, null, 2);
+        const generatedReply = await generateGeminiContent(prompt);
+        if (!generatedReply) {
+          console.error("Outlook auto-reply skipped: empty Gemini reply");
+          return;
+        }
+        const inboundSubject = message.subject || outlookConversation.subject || "";
+        const replySubject = /^re:/i.test(inboundSubject)
+          ? inboundSubject
+          : `Re: ${inboundSubject}`;
+        await enqueueMessage({
+          type: "email",
+          vendor: "outlook",
+          to: message.from,
+          from: outlookConversation.emailAddress,
+          subject: replySubject,
+          body: generatedReply,
+          html: generatedReply,
+          threadId: outlookConversation.threadId,
+          inReplyTo: messageId,
+          campaignId: outlookConversation.campaignId,
+          prompt: outlookConversation.prompt,
+          autoReply: true,
+        });
+
+        const promptWithReply =
+          (outlookConversation.prompt || "") +
+          "\n\n" +
+          JSON.stringify(
+            [
+              ...previousMessages,
+              {
+                from: outlookConversation.emailAddress,
+                to: message.from,
+                subject: replySubject,
+                body: generatedReply,
+                direction: "outbound",
+              },
+            ],
+            null,
+            2
+          );
+        await OutlookConversation.updateOne(
+          { _id: outlookConversation._id },
+          { $set: { prompt: promptWithReply } }
+        );
+
+        const actualPrompt = statusPrompt.replace("{{prompt}}", promptWithReply);
+        const overallAIStatus = parseGeminiJson(
+          await generateGeminiContent(actualPrompt)
+        );
+        await OutlookConversation.updateOne(
+          { _id: outlookConversation._id },
+          {
+            $set: {
+              overallAIDescription: overallAIStatus?.overallAIDescription,
+              overallAIStatus: overallAIStatus?.overallAIStatus,
+              questions: overallAIStatus?.questions || [],
+              ...(TERMINAL_AI_STATUSES.includes(overallAIStatus?.overallAIStatus)
+                ? { autoReply: false }
+                : {}),
+            },
+          }
+        );
+      })
+      .catch((error) => {
+        console.error("outlook webhook fetch failed:", error.message);
+      });
+  }
+};

@@ -1,6 +1,7 @@
 import { MessageVendor, SendMessageBody } from "../types/message.types";
 import { sendGmailMessage } from "./gmail.service";
 import { makeHunarCall, makeZyvkayCall } from "./hunar.service";
+import { sendOutlookMessage } from "./outlook.service";
 import { sendSmtpMessage } from "./smtp.service";
 import { sendWhatsappMessageHuntlo, sendWhatsappMessageTextHuntlo } from "./whatsapp.service";
 import { sendZohoMessage } from "./zoho.service";
@@ -80,8 +81,16 @@ export const sendEmailMessage = async (messageBody: SendMessageBody) => {
   }
   
   if (messageBody.vendor === MessageVendor.OUTLOOK) {
-    console.log("outlook needs to be configured");
-    return;
+    
+    return sendOutlookMessage({
+      to: messageBody.to,
+      subject: messageBody.subject,
+      text: messageBody.body,
+      html: messageBody.html,
+      from: messageBody.from ?? null,
+      threadId: messageBody.threadId ?? null,
+      inReplyTo: messageBody.inReplyTo ?? null,
+    })
   }
 
   if (messageBody.vendor === MessageVendor.ZOHO) {

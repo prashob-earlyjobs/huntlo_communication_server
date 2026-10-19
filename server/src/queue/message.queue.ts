@@ -10,6 +10,7 @@ import { WhatsappConversation, OverallAIStatus } from "../models/whatsappConvers
 import { HunarCommunication } from "../models/hunarCommunication.model";
 import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
 import { ZohoConversation } from "../models/zohoConversation.model";
+import { OutlookConversation } from "../models/outlookConversation.model";
 
 dotenv.config();
 
@@ -358,6 +359,58 @@ export function startMessageWorker() {
               html: job.data.html,
               direction: "outbound",
               internalDate: String(Date.now()),
+            },
+          },
+        },
+        { upsert: true }
+      );
+    } else if (job.data.vendor === MessageVendor.OUTLOOK) {
+      const from = job.data.from || job.data.fromAddress;
+      const to = String(job.data.to || "").trim().toLowerCase();
+      const campaignId = job.data.campaignId || job.data.campaign_id;
+      let threadId = result?.threadId || job.data?.threadId;
+
+      if (!threadId && from && to) {
+        const existing = await OutlookConversation.find({
+          emailAddress: String(from).trim().toLowerCase(),
+          ...(campaignId ? { campaignId: String(campaignId) } : {}),
+        })
+          .sort({ updatedAt: -1 })
+          .limit(20);
+        threadId = existing.find((row) =>
+          (row.messages || []).some(
+            (item) => String(item.to || "").trim().toLowerCase() === to
+          )
+        )?.threadId;
+      }
+
+      threadId = threadId || job.data?.conversationId || uuidv4();
+      const messageId = result?.messageId || uuidv4();
+
+      await OutlookConversation.updateOne(
+        { threadId: threadId },
+        {
+          $setOnInsert: {
+            threadId: threadId,
+            emailAddress: from,
+            subject: job.data.subject,
+            autoReply: job.data.autoReply,
+            prompt: job.data.prompt,
+            campaignId: job.data.campaignId || job.data.campaign_id,
+            overallAIStatus: OverallAIStatus.AWAITING_REPLY,
+            overallAIDescription: "Outreach sent, no candidate reply yet",
+          },
+          $push: {
+            messages: {
+              messageId: messageId,
+              from: job.data.from,
+              to: job.data.to,
+              subject: job.data.subject,
+              snippet: job.data.body,
+              body: job.data.body,
+              html: job.data.html,
+              direction: "outbound",
+              internalDate: result?.internalDate || String(Date.now()),
             },
           },
         },
