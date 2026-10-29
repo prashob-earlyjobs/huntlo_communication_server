@@ -2,10 +2,12 @@ export const sendWhatsappMessageHuntlo = async (input: {
     template?: string,
     to: string,
     body?: string,
-    variables?: string[]
+    variables?: string[],
+    phoneNumberId?: string,
+    accessToken?: string,
 }) => {
-    const phoneNumberId = process.env.HUNTLO_WHATSAPP_PHONE_NUMBER_ID;
-    const accessToken = process.env.HUNTLO_WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = input.phoneNumberId || process.env.HUNTLO_WHATSAPP_PHONE_NUMBER_ID;
+    const accessToken = input.accessToken || process.env.HUNTLO_WHATSAPP_ACCESS_TOKEN;
 
     if (input.template) {
         const template: any = {
@@ -84,9 +86,11 @@ export const sendWhatsappMessageTextHuntlo = async (input: {
   to: string;
   body: string;
   buttons?: { id: string; title: string }[];
+  phoneNumberId?: string;
+  accessToken?: string;
 }) => {
-  const phoneNumberId = process.env.HUNTLO_WHATSAPP_PHONE_NUMBER_ID;
-  const accessToken = process.env.HUNTLO_WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = input.phoneNumberId || process.env.HUNTLO_WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = input.accessToken || process.env.HUNTLO_WHATSAPP_ACCESS_TOKEN;
 
   if (!phoneNumberId || !accessToken) {
     throw new Error("WhatsApp credentials required: HUNTLO_WHATSAPP_PHONE_NUMBER_ID and HUNTLO_WHATSAPP_ACCESS_TOKEN");

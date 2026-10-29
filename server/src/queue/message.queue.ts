@@ -11,6 +11,7 @@ import { HunarCommunication } from "../models/hunarCommunication.model";
 import { ZyvkaCommunication } from "../models/zyvkaCommunication.model";
 import { ZohoConversation } from "../models/zohoConversation.model";
 import { OutlookConversation } from "../models/outlookConversation.model";
+import { getWhatsappSender } from "../helpers/whatsappIntegration";
 
 dotenv.config();
 
@@ -191,8 +192,9 @@ export function startMessageWorker() {
       
       const phone = String(job.data.to || "");
       const threadId = job.data.threadId || job.data.conversationId;
-      const wabaID = process.env.HUNTLO_WHATSAPP_WABA_ID;
-      const accessToken = process.env.HUNTLO_WHATSAPP_ACCESS_TOKEN;
+      const sender = await getWhatsappSender(job.data.from);
+      const wabaID = sender.wabaId;
+      const accessToken = sender.accessToken;
       const templateName = job.data.template;
       let body = job.data.body;
 
@@ -237,7 +239,7 @@ export function startMessageWorker() {
           $push: {
             messages: {
               messageId: result.messageId,
-              from: process.env.HUNTLO_WHATSAPP_PHONE_NUMBER_ID,
+              from: sender.phoneNumberId,
               to: phone,
               snippet: body,
               body,
