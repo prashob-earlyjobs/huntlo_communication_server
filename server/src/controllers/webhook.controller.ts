@@ -352,7 +352,39 @@ export const gmailWebhookController = async (req: Request, res: Response) => {
       }
 
       if (!historyRes.ok) {
-        console.error("Gmail history error:", historyData?.error?.message);
+        const historyError = historyData?.error?.message || "unknown history error";
+        console.error("Gmail history error:", historyError);
+
+        // startHistoryId older than Gmail retention (~1 week) returns 404.
+        // Advance cursor to current profile historyId so future webhooks work.
+        if (historyRes.status === 404) {
+          try {
+            const profileRes = await fetch(
+              "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            const profile: any = await profileRes.json();
+            if (profileRes.ok && profile?.historyId) {
+              await GmailMailboxCursor.updateOne(
+                { emailAddress },
+                { $set: { historyId: String(profile.historyId) } },
+                { upsert: true }
+              );
+              console.warn(
+                "Gmail cursor reset after stale historyId",
+                startHistoryId,
+                "->",
+                profile.historyId,
+                emailAddress
+              );
+            }
+          } catch (resetError) {
+            console.error(
+              "Gmail cursor reset failed:",
+              (resetError as Error).message
+            );
+          }
+        }
         return res.status(200).end();
       } else {
         const added =
@@ -400,7 +432,7 @@ export const gmailWebhookController = async (req: Request, res: Response) => {
               : undefined;
 
             if (convThreadId) {
-              await GmailConversation.updateOne(
+              const pushResult = await GmailConversation.updateOne(
                 { threadId: convThreadId, "messages.messageId": { $ne: messageId } },
                 {
                   $push: {
@@ -420,6 +452,36 @@ export const gmailWebhookController = async (req: Request, res: Response) => {
                   },
                 }
               );
+              if (pushResult.matchedCount === 0) {
+                console.error(
+                  "Gmail webhook: no conversation for threadId",
+                  convThreadId,
+                  "messageId=",
+                  messageId,
+                  "from=",
+                  getHeader("from"),
+                  "subject=",
+                  getHeader("subject")
+                );
+              } else if (pushResult.modifiedCount === 0) {
+                console.log(
+                  "Gmail webhook: message already stored",
+                  messageId,
+                  "threadId=",
+                  convThreadId
+                );
+              } else {
+                console.log(
+                  "Gmail webhook: stored message",
+                  messageId,
+                  "threadId=",
+                  convThreadId,
+                  "direction=",
+                  (fullMessage.labelIds || []).includes("SENT")
+                    ? "outbound"
+                    : "inbound"
+                );
+              }
             }
 
             if (
