@@ -111,11 +111,7 @@ export const sendMessageSchema = Joi.object({
     otherwise: Joi.when("type", {
       is: "email",
       then: Joi.string().optional().allow(null, ""),
-      otherwise: Joi.when("type", {
-        is: "whatsapp",
-        then: Joi.string().trim().min(1).optional().allow(null, ""),
-        otherwise: Joi.forbidden(),
-      }),
+      otherwise: Joi.forbidden(),
     }),
   }),
 
