@@ -13,29 +13,39 @@ type EncryptedPayload = {
   version?: number;
 };
 
-function encryptionKey() {
-  const hex = String(process.env.ENCRYPTION_KEY || "").trim();
-  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-    throw new Error("ENCRYPTION_KEY must be a 64-character hex string");
+function encryptionKeys() {
+  const keys = [process.env.SMTP_ENCRYPTION_KEY, process.env.ENCRYPTION_KEY]
+    .map((value) => String(value || "").trim())
+    .filter((value, index, all) => /^[0-9a-fA-F]{64}$/.test(value) && all.indexOf(value) === index)
+    .map((value) => Buffer.from(value, "hex"));
+  if (!keys.length) {
+    throw new Error("SMTP_ENCRYPTION_KEY or ENCRYPTION_KEY must be a 64-character hex string");
   }
-  return Buffer.from(hex, "hex");
+  return keys;
 }
 
-function decryptSecret(payload?: EncryptedPayload | null) {
+function openSecret(payload?: EncryptedPayload | null) {
   if (!payload?.ciphertext || !payload.iv || !payload.authTag) return null;
-  const key = encryptionKey();
-  const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(payload.iv, "base64url"), {
-    authTagLength: AUTH_TAG_LENGTH,
-  });
-  decipher.setAuthTag(Buffer.from(payload.authTag, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(payload.ciphertext, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
+  const iv = Buffer.from(payload.iv, "base64url");
+  const authTag = Buffer.from(payload.authTag, "base64url");
+  const ciphertext = Buffer.from(payload.ciphertext, "base64url");
+
+  for (const key of encryptionKeys()) {
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+      decipher.setAuthTag(authTag);
+      return {
+        value: Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8"),
+        key,
+      };
+    } catch {
+      // Zoho rows may be encrypted with the Huntlo SMTP key or ENCRYPTION_KEY.
+    }
+  }
+  throw new Error("Unsupported state or unable to authenticate data");
 }
 
-function encryptSecret(value: string): EncryptedPayload {
-  const key = encryptionKey();
+function encryptSecret(value: string, key = encryptionKeys()[0]): EncryptedPayload {
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
@@ -111,31 +121,32 @@ export async function getZohoAccessToken(
       return null;
     }
 
-    const current = decryptSecret(row.encryptedAccessToken);
+    const current = openSecret(row.encryptedAccessToken);
     const expiresAt = row.tokenExpiresAt ? new Date(row.tokenExpiresAt).getTime() : 0;
-    if (!forceRefresh && current && expiresAt > Date.now() + SKEW_MS) {
-      return current;
+    if (!forceRefresh && current?.value && expiresAt > Date.now() + SKEW_MS) {
+      return current.value;
     }
 
-    const refreshToken = decryptSecret(row.encryptedRefreshToken);
-    if (!refreshToken) {
+    const refreshToken = openSecret(row.encryptedRefreshToken);
+    if (!refreshToken?.value) {
       console.error("Zoho refresh token missing for", email);
-      return current;
+      return current?.value || null;
     }
 
     const dataCenter = String(
       row.config?.zohoDataCenter || row.config?.dataCenter || "com"
     );
-    const tokens = await refreshZohoAccessToken(refreshToken, dataCenter);
+    const tokens = await refreshZohoAccessToken(refreshToken.value, dataCenter);
     const accessToken = String(tokens.access_token || "");
-    if (!accessToken) return current;
+    if (!accessToken) return current?.value || null;
 
+    const key = refreshToken.key;
     const expiresIn = Number(tokens.expires_in || 3600);
     await integrations.updateOne(
       { _id: row._id },
       {
         $set: {
-          encryptedAccessToken: encryptSecret(accessToken),
+          encryptedAccessToken: encryptSecret(accessToken, key),
           tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
           status: "connected",
           errorCode: null,
