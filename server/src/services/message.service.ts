@@ -4,7 +4,6 @@ import { makeHunarCall, makeZyvkayCall } from "./hunar.service";
 import { sendOutlookMessage } from "./outlook.service";
 import { sendSmtpMessage } from "./smtp.service";
 import { sendWhatsappMessageHuntlo, sendWhatsappMessageTextHuntlo } from "./whatsapp.service";
-import { getWhatsappSender } from "../helpers/whatsappIntegration";
 import { sendZohoMessage } from "./zoho.service";
 
 
@@ -13,15 +12,12 @@ export const sendWhatsappMessage = async(messageBody: SendMessageBody) => {
 
 
     if(messageBody.vendor === MessageVendor.HUNTLO){
-        const sender = await getWhatsappSender(messageBody.from);
         if (messageBody.template) {
           return sendWhatsappMessageHuntlo({
               to:messageBody.to,
               template:messageBody.template ?? null,
               body:messageBody.body ?? null,
-              variables: messageBody.variables,
-              phoneNumberId: sender.phoneNumberId,
-              accessToken: sender.accessToken,
+              variables: messageBody.variables
           })
         }
 
@@ -29,8 +25,6 @@ export const sendWhatsappMessage = async(messageBody: SendMessageBody) => {
           to: messageBody.to,
           body: messageBody.body ?? "",
           buttons: messageBody.buttons,
-          phoneNumberId: sender.phoneNumberId,
-          accessToken: sender.accessToken,
         })
     }
 };
