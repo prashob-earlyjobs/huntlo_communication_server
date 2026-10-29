@@ -80,12 +80,17 @@ export async function getGmailAccessToken(
 ) {
   try {
     const email = String(emailAddress || "").trim().toLowerCase();
+    // Never pick a random mailbox — without an explicit from, callers must pass accessToken.
+    if (!email) {
+      console.error("Gmail from address is required for token lookup");
+      return null;
+    }
     const integrations = mongoose.connection.collection("userintegrations");
     const query: Record<string, unknown> = {
       provider: "gmail",
+      email,
       status: { $in: ["connected", "needs_attention", "testing"] },
     };
-    if (email) query.email = email;
 
     const row = await integrations
       .find(query)
@@ -94,7 +99,7 @@ export async function getGmailAccessToken(
       .next();
 
     if (!row) {
-      console.error("No Gmail integration in userintegrations for", email || "(no email)");
+      console.error("No Gmail integration in userintegrations for", email);
       return null;
     }
 
