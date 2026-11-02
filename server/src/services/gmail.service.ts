@@ -11,8 +11,10 @@ export async function sendGmailMessage(input: {
   inReplyTo?: string | null;
   references?: string | null;
 }) {
+  // Prefer the caller's token so a shared DB cannot substitute another org's mailbox.
   let accessToken =
-    (await getGmailAccessToken(input.from)) || input.accessToken;
+    String(input.accessToken || "").trim() ||
+    (await getGmailAccessToken(input.from));
 
   if (!accessToken) {
     throw new Error(

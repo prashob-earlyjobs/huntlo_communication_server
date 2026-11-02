@@ -88,6 +88,7 @@ export const sendEmailMessage = async (messageBody: SendMessageBody) => {
       text: messageBody.body,
       html: messageBody.html,
       from: messageBody.from ?? null,
+      accessToken: messageBody.accessToken ?? null,
       threadId: messageBody.threadId ?? null,
       inReplyTo: messageBody.inReplyTo ?? null,
     })

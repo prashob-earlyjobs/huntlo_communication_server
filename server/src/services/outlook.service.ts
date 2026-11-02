@@ -8,11 +8,14 @@ export const sendOutlookMessage = async (input: {
     text?: string;
     html?: string;
     from?: string | null;
+    accessToken?: string | null;
     threadId?: string | null;
     inReplyTo?: string | null;
     references?: string | null;
   }) =>{
-    let accessToken = await getOutlookAccessToken(input.from);
+    let accessToken =
+      String(input.accessToken || "").trim() ||
+      (await getOutlookAccessToken(input.from));
    
     if (!accessToken) {
       throw new Error(
